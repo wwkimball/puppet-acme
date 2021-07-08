@@ -1,60 +1,56 @@
-# = Define: acme::request
+# @summary A request to sign a CSR or renew a certificate.
 #
-# Request to sign a CSR.
+# @param csr
+#   The full CSR as a string.
 #
-# == Parameters:
-#
-# [*csr*]
-#   The full csr as string.
-#
-# [*domain*]
+# @param domain
 #   Certificate commonname / domainname.
 #
-# [*use_account*]
-#   The Let's Encrypt account that should be used (or registered).
+# @param use_account
+#   The Let's Encrypt account that should be used.
 #
-# [*use_profile*]
+# @param use_profile
 #   The profile that should be used to sign the certificate.
 #
-# [*letsencrypt_ca*]
+# @param letsencrypt_ca
 #   The Let's Encrypt CA you want to use. Used to overwrite the default Let's
-#   Encrypt CA that is configured on $acme_host.
+#   Encrypt CA that is configured on `$acme_host`.
 #
+# @api private
 define acme::request (
-  $csr,
-  $use_account,
-  $use_profile,
-  $renew_days       = $::acme::params::renew_days,
-  $letsencrypt_ca   = undef,
-  $domain           = $name,
-  $altnames         = undef,
-  $ocsp_must_staple = true,
+  String $csr,
+  String $use_account,
+  String $use_profile,
+  String $domain = $name,
+  Integer $renew_days = $acme::renew_days,
+  Boolean $ocsp_must_staple = true,
+  Optional[Array] $altnames = undef,
+  Optional[Enum['production','staging']] $letsencrypt_ca = undef,
 ) {
-  require ::acme::params
-
-  $user = $::acme::params::user
-  $group = $::acme::params::group
-  $base_dir = $::acme::params::base_dir
-  $acme_dir = $::acme::params::acme_dir
-  $cfg_dir = $::acme::params::cfg_dir
-  $crt_dir = $::acme::params::crt_dir
-  $csr_dir = $::acme::params::csr_dir
-  $acct_dir = $::acme::params::acct_dir
-  $log_dir = $::acme::params::log_dir
-  $results_dir = $::acme::params::results_dir
-  $acme_install_dir = $::acme::params::acme_install_dir
-  $path = $::acme::params::path
+  $user = $acme::user
+  $group = $acme::group
+  $base_dir = $acme::base_dir
+  $acme_dir = $acme::acme_dir
+  $cfg_dir = $acme::cfg_dir
+  $crt_dir = $acme::crt_dir
+  $csr_dir = $acme::csr_dir
+  $acct_dir = $acme::acct_dir
+  $log_dir = $acme::log_dir
+  $results_dir = $acme::results_dir
+  $acme_install_dir = $acme::acme_install_dir
+  $path = $acme::path
+  $stat_expression = $acme::stat_expression
 
   # acme.sh configuration
-  $acmecmd = $::acme::params::acmecmd
-  $acmelog = $::acme::params::acmelog
+  $acmecmd = $acme::acmecmd
+  $acmelog = $acme::acmelog
   $csr_file = "${csr_dir}/${domain}/cert.csr"
   $crt_file = "${crt_dir}/${domain}/cert.pem"
   $chain_file = "${crt_dir}/${domain}/chain.pem"
   $fullchain_file = "${crt_dir}/${domain}/fullchain.pem"
 
   # Check if the account is actually defined.
-  $accounts = $::acme::accounts
+  $accounts = $acme::accounts
   if ! ($use_account in $accounts) {
     fail("Module ${module_name}: account \"${use_account}\" for cert ${domain}",
       "is not defined on \$acme_host")
@@ -62,7 +58,7 @@ define acme::request (
   $account_email = $use_account
 
   # Check if the profile is actually defined.
-  $profiles = $::acme::profiles
+  $profiles = $acme::profiles
   #if ($profiles == Hash) and $profiles[$use_profile] {
   if $profiles[$use_profile] {
     $profile = $profiles[$use_profile]
@@ -73,24 +69,14 @@ define acme::request (
   $challengetype = $profile['challengetype']
   $hook = $profile['hook']
 
-  # Validate Let's Encrypt CA.
-  if ( $letsencrypt_ca ) {
-    validate_re($letsencrypt_ca, '^(staging|production)$')
-    $_letsencrypt_ca = $letsencrypt_ca
-  } else {
-    # Fallback to default CA.
-    $_letsencrypt_ca = $::acme::letsencrypt_ca
-  }
-  notify { "using CA \"${_letsencrypt_ca}\" for domain ${domain}": loglevel => debug }
-
   # We need to tell acme.sh when to use LE staging servers.
-  if ( $_letsencrypt_ca == 'staging' ) {
+  if ( $letsencrypt_ca == 'staging' ) {
     $staging_or_not = '--staging'
   } else {
     $staging_or_not = ''
   }
 
-  $account_conf_file = "${acct_dir}/${account_email}/account_${_letsencrypt_ca}.conf"
+  $account_conf_file = "${acct_dir}/${account_email}/account_${letsencrypt_ca}.conf"
 
   # Add ocsp if must-staple is requested
   if ($ocsp_must_staple) {
@@ -115,19 +101,40 @@ define acme::request (
   }
   # Merge those pre-defined hook options with user-defined hook options.
   # NOTE: We intentionally use Hashes so that *values* can be overriden.
-  $_hook_params = deep_merge($_hook_params_pre, $profile['env'])
+  if ($_hook_params_pre =~ Hash) {
+    $_hook_params = deep_merge($_hook_params_pre, $profile['env'])
+  } elsif ($profile and $profile['env'] =~ Hash) {
+    $_hook_params = $profile['env']
+  } else {
+    $_hook_params = {}
+  }
+
   # Convert the Hash to an Array, required for Exec's "environment" attribute.
   $hook_params = $_hook_params.map |$key,$value| { "${key}=${value}" }
   notify { "hook params for domain ${domain}: ${hook_params}": loglevel => debug }
 
   # Collect additional options for acme.sh.
-  if ($profile['options']['dnssleep']) {
-    $_dnssleep = $profile['options']['dnssleep']
+  if ($profile['options']['dnssleep']
+      and ($profile['options']['dnssleep'] =~ Integer)
+      and ($profile['options']['dnssleep'] > 0)) {
+    $_dnssleep = "--dnssleep  ${profile['options']['dnssleep']}"
+  } elsif (defined('$acme::dnssleep') and ($acme::dnssleep > 0)) {
+    $_dnssleep = "--dnssleep ${::acme::dnssleep}"
   } else {
-    $_dnssleep = $::acme::params::dnssleep
+    # Let acme.sh poll dns status automatically.
+    $_dnssleep = ''
   }
-  $_acme_options = [ "--dnssleep ${_dnssleep}" ]
-  $acme_options = join($_acme_options, ' ')
+
+  # Use the challenge or domain alias that is specified in the profile
+  if ($profile['options']['challenge_alias']) {
+    $_alias_mode = "--challenge-alias ${profile['options']['challenge_alias']}"
+    $acme_options = join([$_dnssleep, $_alias_mode], ' ')
+  } elsif ($profile['options']['domain_alias']) {
+    $_alias_mode = "--domain-alias ${profile['options']['domain_alias']}"
+    $acme_options = join([$_dnssleep, $_alias_mode], ' ')
+  } else {
+    $acme_options = $_dnssleep
+  }
 
   File {
     owner   => $user,
@@ -152,6 +159,19 @@ define acme::request (
     mode    => '0640',
   }
 
+  # Create directory to place the crt_file for each domain
+  $crt_dir_domain = "${crt_dir}/${domain}"
+  ensure_resource('file', $crt_dir_domain, {
+    ensure  => directory,
+    mode    => '0755',
+    owner   => $user,
+    group   => $group,
+    require => [
+      User[$user],
+      Group[$group]
+    ],
+  })
+
   # Places where acme.sh stores the resulting certificate.
   $le_crt_file = "${acme_dir}/${domain}/${domain}.cer"
   $le_chain_file = "${acme_dir}/${domain}/ca.cer"
@@ -170,19 +190,21 @@ define acme::request (
   $renew_seconds = $renew_days*86400
   notify { "acme renew set to ${renew_days} days (or ${renew_seconds} seconds) for domain ${domain}": loglevel => debug }
 
+  # NOTE: If the CSR file is newer than the cert, this check will trigger
+  # a renewal of the cert. However, acme.sh may not recognize the change
+  # in the CSR or decide that the change does not need a renewal of the cert.
+  # In this case it will be triggered on every Puppet run, until $renew_days
+  # is reached and acme.sh finally renews the cert. This is a known limitation
+  # that does not cause any side-effects.
   $le_check_command = join([
-    "/usr/bin/test -f ${le_crt_file}",
+    "test -f \'${le_crt_file}\'",
     '&&',
-    "/usr/bin/openssl x509 -checkend ${renew_seconds} -noout -in ${le_crt_file}",
+    "openssl x509 -checkend ${renew_seconds} -noout -in \'${le_crt_file}\'",
     '&&',
-    '/usr/bin/test',
-    '$(',
-    "/usr/bin/stat -c '%Y' ${le_crt_file}",
-    ')',
+    'test',
+    "\$( ${stat_expression} \'${le_crt_file}\' )",
     '-gt',
-    '$(',
-    "/usr/bin/stat -c '%Y' ${csr_file}",
-    ')',
+    "\$( ${stat_expression} \'${csr_file}\' )",
   ], ' ')
 
   # Check if challenge type is supported.
@@ -203,19 +225,19 @@ define acme::request (
     $acmecmd,
     $staging_or_not,
     '--signcsr',
-    "--domain ${domain}",
+    "--domain \'${domain}\'",
     $_altnames,
     $acme_validation,
     "--log ${acmelog}",
     '--log-level 2',
-    "--home ${$acme_dir}",
+    "--home ${acme_dir}",
     '--keylength 4096',
     "--accountconf ${account_conf_file}",
     $_ocsp,
-    "--csr ${csr_file}",
-    "--certpath ${crt_file}",
-    "--capath ${chain_file}",
-    "--fullchainpath ${fullchain_file}",
+    "--csr \'${csr_file}\'",
+    "--cert-file \'${crt_file}\'",
+    "--ca-file \'${chain_file}\'",
+    "--fullchain-file \'${fullchain_file}\'",
     $acme_options,
     '>/dev/null',
   ], ' ')
@@ -225,20 +247,20 @@ define acme::request (
     $acmecmd,
     $staging_or_not,
     '--issue',
-    "--domain ${domain}",
+    "--domain \'${domain}\'",
     $_altnames,
     $acme_validation,
     "--days ${renew_days}",
     "--log ${acmelog}",
     '--log-level 2',
-    "--home ${$acme_dir}",
+    "--home ${acme_dir}",
     '--keylength 4096',
     "--accountconf ${account_conf_file}",
     $_ocsp,
-    "--csr ${csr_file}",
-    "--certpath ${crt_file}",
-    "--capath ${chain_file}",
-    "--fullchainpath ${fullchain_file}",
+    "--csr \'${csr_file}\'",
+    "--cert-file \'${crt_file}\'",
+    "--ca-file \'${chain_file}\'",
+    "--fullchain-file \'${fullchain_file}\'",
     $acme_options,
     '>/dev/null',
   ], ' ')
@@ -252,12 +274,14 @@ define acme::request (
     path        => $path,
     environment => $hook_params,
     command     => $le_command_signcsr,
+    timeout     => $acme::exec_timeout,
     # Run this exec only if no old cert can be found.
-    onlyif      => "/usr/bin/test ! -f ${le_crt_file}",
+    onlyif      => "test ! -f \'${le_crt_file}\'",
     require     => [
       User[$user],
       Group[$group],
       File[$csr_file],
+      File[$crt_dir_domain],
       File[$account_conf_file],
       Vcsrepo[$acme_install_dir],
     ],
@@ -277,13 +301,15 @@ define acme::request (
     path        => $path,
     environment => $hook_params,
     command     => $le_command_renew,
+    timeout     => $acme::exec_timeout,
     returns     => [ 0, 2, ],
     # Run this exec only if an old cert can be found.
-    onlyif      => "/usr/bin/test -f ${le_crt_file}",
+    onlyif      => "test -f \'${le_crt_file}\'",
     require     => [
       User[$user],
       Group[$group],
       File[$csr_file],
+      File[$crt_dir_domain],
       File[$account_conf_file],
       Vcsrepo[$acme_install_dir],
     ],
@@ -312,5 +338,4 @@ define acme::request (
   ::acme::request::ocsp { $domain:
     require => File[$result_crt_file],
   }
-
 }

@@ -1,17 +1,16 @@
-# Define: acme::request::crt
+# @summary Fetch the certificate from facter and export it via PuppetDB.
 #
-# Take certificates from facter and export a ressource
-# with the certificate content.
+# @param domain
+#   The certificate commonname / domainname.
 #
-define acme::request::crt(
-  $domain = $name
+# @api private
+define acme::request::crt (
+  String $domain = $name
 ) {
-  require ::acme::params
-
   # acme.sh configuration
-  $acme_dir = $::acme::params::acme_dir
-  $crt_dir = $::acme::params::crt_dir
-  $results_dir = $::acme::params::results_dir
+  $acme_dir = $acme::acme_dir
+  $crt_dir = $acme::crt_dir
+  $results_dir = $acme::results_dir
   $ocsp_file = "${results_dir}/${domain}.ocsp"
 
   # Places where acme.sh stores the resulting certificate.
@@ -19,27 +18,27 @@ define acme::request::crt(
   $le_chain_file = "${acme_dir}/${domain}/ca.cer"
   $le_fullchain_file = "${acme_dir}/${domain}/fullchain.cer"
 
-  # XXX: It seems that we cannot use the files from $acme_dir, because
-  #      this does not work with file() for some reasons. It works with
-  #      (all) files that are in the catalog, though.
-  $result_crt_file = "${results_dir}/${domain}.pem"
-  $result_chain_file = "${results_dir}/${domain}.ca"
+  # Avoid special characters (required for wildcard certs)
+  $domain_rep = regsubst($domain, /[*.-]/, {'.' => '_', '-' => '_', '*' => $acme::wildcard_marker}, 'G')
+  $domain_tag = regsubst($domain, /[*]/, $acme::wildcard_marker, 'G')
 
-  $crt = file($result_crt_file)
-  notify { "cert for ${domain} from ${result_crt_file} contents: ${crt}": loglevel => debug }
+  $crt = pick_default($facts["acme_crt_${domain_rep}"], '')
 
   # special handling for ocsp stuff (binary data)
   $ocsp = base64('encode', file_or_empty_string($ocsp_file))
 
-  $chain = file_or_empty_string($result_chain_file)
-  notify { "chain for ${domain} from ${le_chain_file} contents: ${chain}": loglevel => debug }
+  $chain = pick_default($facts["acme_ca_${domain_rep}"], '')
 
   if ($crt =~ /BEGIN CERTIFICATE/) {
     @@acme::deploy::crt { $domain:
-      crt_content       => $crt,
+      crt_content       => "${crt}\n",
       crt_chain_content => $chain,
       ocsp_content      => $ocsp,
-      tag               => $::fqdn,
+      # Use the certificate name to tag this resource. This ensures that
+      # the certificate is only installed on the host where it is configured.
+      tag               => "crt_${domain_tag}",
     }
+  } else {
+    notify { "got no cert from facter for domain ${domain} (may need another puppet run)": }
   }
 }
