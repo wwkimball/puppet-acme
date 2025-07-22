@@ -24,7 +24,6 @@ define acme::csr (
   String $domain_list = $name,
   Enum['present','absent'] $ensure = 'present',
   Boolean $force = true,
-  Boolean $ocsp_must_staple = true,
   Integer $renew_days = $acme::renew_days,
   Optional[Enum['production','staging']] $letsencrypt_ca = undef,
   Optional[String] $country = undef,
@@ -137,7 +136,6 @@ define acme::csr (
       email             => $email,
       has_san           => $has_san,
       locality          => $locality,
-      ocsp_must_staple  => $ocsp_must_staple,
       organization      => $organization,
       state             => $state,
       subject_alt_names => $subject_alt_names,
@@ -197,7 +195,6 @@ define acme::csr (
       use_profile      => $use_profile,
       renew_days       => $renew_days,
       letsencrypt_ca   => $letsencrypt_ca,
-      ocsp_must_staple => $ocsp_must_staple,
     }
   } else {
     notify { "no CSR from facter for domain ${domain} (normal on first run)" : }

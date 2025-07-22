@@ -25,7 +25,8 @@
 #   dh parameter size, defaults to $::acme::dh_param_size
 #
 # @param ocsp_must_staple
-#   request certificate with OCSP Must-Staple exctension, defaults to $::acme::ocsp_must_staple
+#   REMOVED: OCSP Must-Staple is no longer supported by Let's Encrypt as of
+#   January 30, 2025.
 #
 define acme::certificate (
   String $use_account,
@@ -33,7 +34,6 @@ define acme::certificate (
   String $domain = $name,
   String $acme_host = $acme::acme_host,
   Integer $dh_param_size = $acme::dh_param_size,
-  Boolean $ocsp_must_staple = $acme::ocsp_must_staple,
   String $posthook_cmd = $acme::posthook_cmd,
   Integer $renew_days = $acme::renew_days,
   Optional[Enum['production','staging']] $letsencrypt_ca = undef,
@@ -61,7 +61,6 @@ define acme::certificate (
     use_profile      => $use_profile,
     acme_host        => $acme_host,
     dh_param_size    => $dh_param_size,
-    ocsp_must_staple => $ocsp_must_staple,
     renew_days       => $renew_days,
     letsencrypt_ca   => $letsencrypt_ca,
   }

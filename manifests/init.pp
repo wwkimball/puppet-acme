@@ -50,7 +50,7 @@
 #   Specifies the DH parameter size, defaults to `2048`.
 #
 # @param ocsp_must_staple
-#   Whether to request certificates with OCSP Must-Staple extension, defaults to `true`.
+#   REMOVED because Let's Encrypt dropped OCSP support January 10, 2025.
 #
 # @param manage_packages
 #   Whether the module should install necessary packages, mainly git.
@@ -98,7 +98,6 @@ class acme (
   String $group,
   Enum['production','staging'] $letsencrypt_ca,
   Boolean $manage_packages,
-  Boolean $ocsp_must_staple,
   String $path,
   String $posthook_cmd,
   Integer $renew_days,
@@ -148,7 +147,6 @@ class acme (
       domain           => $domain,
       acme_host        => $acme_host,
       dh_param_size    => $dh_param_size,
-      ocsp_must_staple => $ocsp_must_staple,
     },$config)
     # Create the certificate resource.
     ::acme::certificate { $domain: * => $options }

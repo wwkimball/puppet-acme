@@ -135,9 +135,7 @@ Specifies the DH parameter size, defaults to `2048`.
 
 ##### `ocsp_must_staple`
 
-Data type: `Boolean`
-
-Whether to request certificates with OCSP Must-Staple extension, defaults to `true`.
+REMOVED because Let's Encrypt dropped OCSP support January 10, 2025.
 
 ##### `manage_packages`
 
@@ -346,11 +344,7 @@ Default value: $acme::dh_param_size
 
 ##### `ocsp_must_staple`
 
-Data type: `Boolean`
-
-request certificate with OCSP Must-Staple exctension, defaults to $::acme::ocsp_must_staple
-
-Default value: $acme::ocsp_must_staple
+REMOVED because Let's Encrypt dropped OCSP support January 10, 2025.
 
 ##### `posthook_cmd`
 

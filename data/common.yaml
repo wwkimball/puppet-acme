@@ -28,7 +28,6 @@ acme::ocsp_request: "%{lookup('acme::base_dir')}/get_certificate_ocsp.sh"
 
 # Cert defaults
 acme::dh_param_size: 2048
-acme::ocsp_must_staple: true
 
 # Module defaults
 acme::acme_host: "%{::servername}"
